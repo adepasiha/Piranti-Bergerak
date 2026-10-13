@@ -1,15 +1,30 @@
 import 'package:flutter/material.dart';
-import '../common/app_colors.dart';
+import 'appcolors.dart';
+import 'cartpage.dart';
+import 'profilepage.dart';
 
 // Widget navigasi bawah aplikasi dengan highlight hijau pada tab aktif.
-// Menekan tab "Keranjang" dari Beranda akan memanggil onCartTap (yang
-// sudah berisi logic Navigator.push dari MyApp). Menekan "Beranda" dari
-// halaman lain akan kembali ke Beranda menggunakan Navigator.popUntil.
+// Menekan tab "Keranjang" atau "Profil" membuka halaman tujuannya dengan
+// Navigator.push (dari Beranda) atau Navigator.pushReplacement (dari tab
+// lain, supaya tumpukan halaman tidak menumpuk). Menekan "Beranda" dari
+// halaman lain kembali ke Beranda menggunakan Navigator.popUntil. Karena CartProvider berada di atas MaterialApp,
+// halaman yang dibuka lewat Navigator.push tetap bisa mengaksesnya.
 class MainNav extends StatelessWidget {
   final int currentIndex;
-  final VoidCallback? onCartTap;
 
-  const MainNav({super.key, required this.currentIndex, this.onCartTap});
+  const MainNav({super.key, required this.currentIndex});
+
+  // Membuka halaman tujuan. Dari Beranda memakai Navigator.push (halaman
+  // ditumpuk di atas Beranda). Dari tab lain memakai pushReplacement
+  // (halaman saat ini diganti) agar tombol kembali tetap menuju Beranda.
+  void _openPage(BuildContext context, Widget page) {
+    final route = MaterialPageRoute(builder: (_) => page);
+    if (currentIndex == 0) {
+      Navigator.push(context, route);
+    } else {
+      Navigator.pushReplacement(context, route);
+    }
+  }
 
   // Fungsi navigasi ketika salah satu tab ditekan.
   void _onTabTapped(BuildContext context, int index) {
@@ -19,12 +34,11 @@ class MainNav extends StatelessWidget {
       // Navigator.popUntil: kembali ke halaman paling awal (Beranda)
       // dengan menghapus semua halaman di atasnya dari navigation stack.
       Navigator.popUntil(context, (route) => route.isFirst);
-    } else if (index == 1 && onCartTap != null) {
-      // Memanggil fungsi onOpenCart dari MyApp, yang di dalamnya
-      // memanggil Navigator.push menuju CartPage.
-      onCartTap!();
+    } else if (index == 1) {
+      _openPage(context, const CartPage()); // tab Keranjang
+    } else if (index == 2) {
+      _openPage(context, const ProfilePage()); // tab Profil
     }
-    // Tab Profil belum memiliki halaman pada tugas ini.
   }
 
   @override
@@ -63,7 +77,7 @@ class MainNav extends StatelessWidget {
           _NavItem(
             icon: Icons.person,
             label: 'Profil',
-            isActive: false,
+            isActive: currentIndex == 2,
             onTap: () => _onTabTapped(context, 2),
           ),
         ],

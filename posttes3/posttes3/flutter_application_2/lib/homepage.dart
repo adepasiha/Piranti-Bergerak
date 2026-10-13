@@ -1,38 +1,46 @@
 import 'package:flutter/material.dart';
-import 'common/app_colors.dart';
-import 'models/food_item.dart';
-import 'widgets/food_card.dart';
-import 'widgets/main_nav.dart';
+import 'package:provider/provider.dart';
+import 'appcolors.dart';
+import 'cartprovider.dart';
+import 'foodcard.dart';
+import 'mainnav.dart';
 
 // ======================================================================
 // HALAMAN 1: BERANDA (HOME)
 // ======================================================================
+// Tetap StatefulWidget karena menyimpan state LOKAL (searchQuery) yang
+// hanya dipakai di halaman ini. Data bersama (menu, stok, keranjang)
+// diambil dari CartProvider.
 class HomePage extends StatefulWidget {
-  const HomePage({
-    required this.menuItems,
-    required this.onAddToCart,
-    required this.onOpenCart,
-    super.key,
-  });
-
-  final List<FoodItem> menuItems;
-  final ValueChanged<FoodItem> onAddToCart;
-  final VoidCallback onOpenCart;
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  // Menyimpan kata kunci pencarian yang diketik pengguna.
+  // Menyimpan kata kunci pencarian yang diketik pengguna (state lokal).
   String searchQuery = '';
+
+  // Menyimpan kategori yang sedang dipilih pada chip (state lokal).
+  // 'Semua' berarti tidak ada penyaringan berdasarkan kategori.
+  String selectedCategory = 'Semua';
 
   @override
   Widget build(BuildContext context) {
-    // Menu yang ditampilkan: hanya yang stoknya masih ada dan namanya
-    // cocok dengan kata kunci pencarian.
-    final visibleItems = widget.menuItems.where((item) {
-      return item.stock > 0 && item.name.toLowerCase().contains(searchQuery);
+    // context.watch: (konsep Provider) mengambil CartProvider sekaligus
+    // "berlangganan" perubahannya. Setiap kali notifyListeners() dipanggil,
+    // build() ini dijalankan ulang sehingga stok di layar ikut berubah.
+    final cart = context.watch<CartProvider>();
+
+    // Menu yang ditampilkan: hanya yang stoknya masih ada (tersedia),
+    // sesuai kategori yang dipilih, dan namanya cocok dengan pencarian.
+    final visibleItems = cart.menuItems.where((item) {
+      final matchCategory =
+          selectedCategory == 'Semua' || item.category == selectedCategory;
+      return item.stock > 0 &&
+          matchCategory &&
+          item.name.toLowerCase().contains(searchQuery);
     }).toList();
 
     // Scaffold: struktur dasar halaman (body + bottomNavigationBar).
@@ -55,7 +63,14 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
               const SizedBox(height: 20), // jarak vertikal antar bagian
-              const _CategorySection(), // daftar kategori makanan
+              // Daftar chip kategori. Saat chip ditekan, selectedCategory
+              // diubah lewat setState sehingga daftar menu ikut tersaring.
+              _CategorySection(
+                selectedCategory: selectedCategory,
+                onSelected: (category) {
+                  setState(() => selectedCategory = category);
+                },
+              ),
               const SizedBox(height: 20), // jarak vertikal
               // Padding: memberi jarak kiri-kanan pada banner promo
               const Padding(
@@ -63,10 +78,15 @@ class _HomePageState extends State<HomePage> {
                 child: _PromoBanner(),
               ),
               const SizedBox(height: 24), // jarak vertikal
-              // Padding: memberi jarak kiri-kanan pada judul section
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: _SectionTitle('Rekomendasi Untukmu'),
+              // Padding: memberi jarak kiri-kanan pada judul section.
+              // Judul berubah mengikuti kategori yang sedang dipilih.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _SectionTitle(
+                  selectedCategory == 'Semua'
+                      ? 'Rekomendasi Untukmu'
+                      : 'Menu $selectedCategory',
+                ),
               ),
               const SizedBox(height: 12), // jarak vertikal
               // Padding: memberi jarak kiri-kanan pada daftar menu makanan
@@ -77,13 +97,20 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   children: [
                     for (var i = 0; i < visibleItems.length; i++) ...[
-                      FoodCard(
-                        item: visibleItems[i],
-                        onAddToCart: () => widget.onAddToCart(visibleItems[i]),
-                      ),
+                      FoodCard(item: visibleItems[i]),
                       if (i < visibleItems.length - 1)
                         const SizedBox(height: 14), // jarak antar kartu menu
                     ],
+                    // Padding + Text: pesan ketika tidak ada menu yang tersedia
+                    // untuk kategori/kata kunci yang dipilih.
+                    if (visibleItems.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 30),
+                        child: Text(
+                          'Belum ada menu tersedia untuk pilihan ini',
+                          style: TextStyle(color: AppColors.textGrey),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -94,10 +121,7 @@ class _HomePageState extends State<HomePage> {
       ),
       // bottomNavigationBar: navigasi bawah aplikasi.
       // currentIndex 0 karena sedang berada di halaman Beranda.
-      bottomNavigationBar: MainNav(
-        currentIndex: 0,
-        onCartTap: widget.onOpenCart,
-      ),
+      bottomNavigationBar: const MainNav(currentIndex: 0),
     );
   }
 }
@@ -206,9 +230,16 @@ class _HeaderSection extends StatelessWidget {
   }
 }
 
-// Widget baris kategori makanan dalam bentuk chip yang bisa di-scroll horizontal.
+// Widget baris kategori makanan dalam bentuk chip yang bisa di-scroll
+// horizontal dan bisa ditekan untuk menyaring menu.
 class _CategorySection extends StatelessWidget {
-  const _CategorySection();
+  const _CategorySection({
+    required this.selectedCategory,
+    required this.onSelected,
+  });
+
+  final String selectedCategory; // kategori yang sedang aktif
+  final ValueChanged<String> onSelected; // dipanggil saat chip ditekan
 
   static const List<Map<String, dynamic>> categories = [
     {'label': 'Semua', 'icon': Icons.restaurant_menu},
@@ -232,40 +263,47 @@ class _CategorySection extends StatelessWidget {
         itemCount: categories.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10), // jarak antar chip
         itemBuilder: (context, index) {
-          final bool isActive = index == 0;
           final category = categories[index];
-          // Container: membungkus tiap chip kategori, memberi warna,
-          // padding, sudut melengkung, dan border sesuai status aktif.
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: isActive ? AppColors.primaryGreen : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isActive ? AppColors.primaryGreen : Colors.grey.shade300,
+          final label = category['label'] as String;
+          // Chip aktif apabila labelnya sama dengan kategori yang dipilih.
+          final bool isActive = label == selectedCategory;
+          // GestureDetector: mendeteksi ketukan pada chip lalu memanggil
+          // onSelected agar HomePage mengganti kategori yang aktif.
+          return GestureDetector(
+            onTap: () => onSelected(label),
+            // Container: membungkus tiap chip kategori, memberi warna,
+            // padding, sudut melengkung, dan border sesuai status aktif.
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isActive ? AppColors.primaryGreen : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive ? AppColors.primaryGreen : Colors.grey.shade300,
+                ),
               ),
-            ),
-            // Row: menyusun ikon kategori dan teks label secara horizontal.
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon: ikon yang mewakili kategori makanan.
-                Icon(
-                  category['icon'] as IconData,
-                  size: 16,
-                  color: isActive ? Colors.white : AppColors.textGrey,
-                ),
-                const SizedBox(width: 6), // jarak antara ikon dan teks
-                // Text: nama kategori makanan.
-                Text(
-                  category['label'] as String,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.white : AppColors.textDark,
+              // Row: menyusun ikon kategori dan teks label secara horizontal.
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon: ikon yang mewakili kategori makanan.
+                  Icon(
+                    category['icon'] as IconData,
+                    size: 16,
+                    color: isActive ? Colors.white : AppColors.textGrey,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6), // jarak antara ikon dan teks
+                  // Text: nama kategori makanan.
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isActive ? Colors.white : AppColors.textDark,
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },

@@ -4,6 +4,7 @@ class FoodItem {
     required this.id,
     required this.name,
     required this.restaurant,
+    required this.category,
     required this.price,
     required this.rating,
     required this.imagePath,
@@ -13,6 +14,7 @@ class FoodItem {
   final String id;
   final String name;
   final String restaurant;
+  final String category; // Nasi, Ayam, Mie, Minuman, atau Dessert
   final int price;
   final String rating;
   final String imagePath;

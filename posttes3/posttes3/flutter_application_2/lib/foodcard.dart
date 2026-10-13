@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
-import '../common/app_colors.dart';
-import '../common/format_rupiah.dart';
-import '../models/food_item.dart';
+import 'package:provider/provider.dart';
+import 'appcolors.dart';
+import 'cartprovider.dart';
+import 'fooditem.dart';
+import 'formatrupiah.dart';
 
 // Widget kartu menu makanan: gambar, rating, nama, resto, harga, stok,
-// dan tombol tambah ke keranjang yang benar-benar mengurangi stok.
+// dan tombol tambah ke keranjang yang mengurangi stok lewat CartProvider.
 class FoodCard extends StatelessWidget {
   final FoodItem item;
-  final VoidCallback onAddToCart;
 
-  const FoodCard({
-    super.key,
-    required this.item,
-    required this.onAddToCart,
-  });
+  const FoodCard({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +37,11 @@ class FoodCard extends StatelessWidget {
           // Stack: menumpuk badge rating di atas gambar menu.
           Stack(
             children: [
-              // ClipRRect + Image: menampilkan foto menu dari folder assets
-              // dengan sudut membulat.
+              // ClipRRect: memotong gambar agar sudutnya membulat.
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                // Image.asset: menampilkan gambar yang tersimpan di dalam
-                // folder assets project. width dan height mengatur ukuran
-                // gambar, fit mengatur bagaimana gambar menyesuaikan area.
+                // Image.asset: menampilkan gambar dari folder assets project.
+                // width dan height mengatur ukuran, fit mengatur penyesuaian.
                 child: Image.asset(
                   item.imagePath,
                   width: 84,
@@ -132,12 +127,15 @@ class FoodCard extends StatelessWidget {
                         color: AppColors.primaryGreen,
                       ),
                     ),
-                    // GestureDetector: mendeteksi ketukan pada tombol tambah,
-                    // lalu memanggil onAddToCart yang mengurangi stok &
-                    // menambah jumlah di keranjang. Tombol dinonaktifkan
-                    // (abu-abu) apabila stok sudah habis.
+                    // GestureDetector: mendeteksi ketukan pada tombol tambah.
+                    // context.read: (konsep Provider) mengambil CartProvider
+                    // untuk memanggil aksi addToCart TANPA berlangganan
+                    // perubahan (cocok dipakai di dalam event seperti onTap).
+                    // Tombol nonaktif (null) apabila stok sudah habis.
                     GestureDetector(
-                      onTap: item.stock > 0 ? onAddToCart : null,
+                      onTap: item.stock > 0
+                          ? () => context.read<CartProvider>().addToCart(item)
+                          : null,
                       // Container: tombol tambah berbentuk lingkaran hijau.
                       child: Container(
                         width: 28,

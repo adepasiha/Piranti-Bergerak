@@ -1,51 +1,37 @@
 import 'package:flutter/material.dart';
-import 'common/app_colors.dart';
-import 'common/format_rupiah.dart';
-import 'models/food_item.dart';
-import 'widgets/cart_item_card.dart';
-import 'widgets/main_nav.dart';
+import 'package:provider/provider.dart';
+import 'appcolors.dart';
+import 'cartitemcard.dart';
+import 'cartprovider.dart';
+import 'formatrupiah.dart';
+import 'mainnav.dart';
+import 'ordersuccesspage.dart';
 
 // ======================================================================
 // HALAMAN 2: KERANJANG (CART PAGE)
-// Halaman ini menampilkan isi keranjang yang benar-benar terhubung ke
-// data di MyApp: mengubah jumlah pesanan di sini akan ikut mengubah
-// stok menu di halaman Beranda.
+// Data keranjang diambil langsung dari CartProvider, jadi tidak perlu
+// lagi menerima data & callback lewat parameter konstruktor.
 // ======================================================================
 class CartPage extends StatefulWidget {
-  const CartPage({
-    required this.menuItems,
-    required this.cartQuantities,
-    required this.onQuantityChanged,
-    required this.grandTotal,
-    required this.onCheckout,
-    super.key,
-  });
-
-  final List<FoodItem> menuItems;
-  final Map<String, int> cartQuantities;
-  final void Function(FoodItem item, int quantity) onQuantityChanged;
-  final int grandTotal;
-  final VoidCallback onCheckout;
+  const CartPage({super.key});
 
   @override
   State<CartPage> createState() => _CartPageState();
 }
 
 class _CartPageState extends State<CartPage> {
-  String searchQuery = ''; // kata kunci pencarian di dalam keranjang
-
-  // Menghitung ulang grand total tiap kali halaman dibangun ulang,
-  // supaya nominalnya selalu sesuai isi keranjang terbaru.
-  int get currentGrandTotal => widget.menuItems.fold(0, (total, item) {
-        return total + item.price * (widget.cartQuantities[item.id] ?? 0);
-      });
+  String searchQuery = ''; // kata kunci pencarian di dalam keranjang (state lokal)
 
   @override
   Widget build(BuildContext context) {
+    // context.watch: (konsep Provider) mengambil CartProvider dan
+    // membangun ulang halaman ini setiap kali isi keranjang berubah.
+    final cart = context.watch<CartProvider>();
+
     // Item keranjang yang ditampilkan: hanya yang jumlahnya > 0 dan
     // namanya cocok dengan kata kunci pencarian.
-    final cartItems = widget.menuItems.where((item) {
-      return (widget.cartQuantities[item.id] ?? 0) > 0 &&
+    final cartItems = cart.menuItems.where((item) {
+      return cart.quantityOf(item) > 0 &&
           item.name.toLowerCase().contains(searchQuery);
     }).toList();
 
@@ -80,13 +66,9 @@ class _CartPageState extends State<CartPage> {
                       for (var i = 0; i < cartItems.length; i++) ...[
                         CartItemCard(
                           item: cartItems[i],
-                          quantity: widget.cartQuantities[cartItems[i].id]!,
-                          maxQuantity: widget.cartQuantities[cartItems[i].id]! +
-                              cartItems[i].stock,
-                          onQuantityChanged: (quantity) {
-                            widget.onQuantityChanged(cartItems[i], quantity);
-                            setState(() {});
-                          },
+                          quantity: cart.quantityOf(cartItems[i]),
+                          maxQuantity:
+                              cart.quantityOf(cartItems[i]) + cartItems[i].stock,
                         ),
                         if (i < cartItems.length - 1)
                           const SizedBox(height: 14), // jarak antar kartu item
@@ -105,11 +87,8 @@ class _CartPageState extends State<CartPage> {
                 ),
               ),
             ),
-            // Ringkasan total & tombol checkout, dinonaktifkan jika total 0.
-            _CartSummaryBar(
-              grandTotal: currentGrandTotal,
-              onCheckout: currentGrandTotal > 0 ? widget.onCheckout : null,
-            ),
+            // Ringkasan total & tombol checkout.
+            const _CartSummaryBar(),
           ],
         ),
       ),
@@ -207,84 +186,107 @@ class _CartHeader extends StatelessWidget {
 // Widget ringkasan total belanja beserta tombol checkout, ditampilkan
 // tetap di bagian bawah (di atas bottom navigation).
 class _CartSummaryBar extends StatelessWidget {
-  const _CartSummaryBar({required this.grandTotal, required this.onCheckout});
-
-  final int grandTotal;
-  final VoidCallback? onCheckout; // null berarti tombol dinonaktifkan
+  const _CartSummaryBar();
 
   @override
   Widget build(BuildContext context) {
-    // Container: membungkus ringkasan total, memberi warna putih dan
-    // bayangan (BoxShadow) di sisi atas agar terlihat menonjol dari daftar item.
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        // BoxShadow: bayangan tipis di sisi atas summary bar.
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
+    // Consumer: (konsep Provider) widget yang hanya membangun ulang bagian
+    // di dalam builder-nya saat CartProvider berubah. Cocok dipakai untuk
+    // membatasi area yang di-rebuild (di sini: total & tombol checkout).
+    return Consumer<CartProvider>(
+      builder: (context, cart, _) {
+        final grandTotal = cart.grandTotal;
+        // Tombol checkout hanya aktif jika total belanja lebih dari 0
+        // (state turunan dari isi keranjang).
+        final canCheckout = grandTotal > 0;
+
+        // Container: membungkus ringkasan total, memberi warna putih dan
+        // bayangan (BoxShadow) di sisi atas agar terlihat menonjol.
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            // BoxShadow: bayangan tipis di sisi atas summary bar.
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 10,
+                offset: const Offset(0, -3),
+              ),
+            ],
           ),
-        ],
-      ),
-      // Row: menyusun label total (kiri) dan tombol checkout (kanan).
-      child: Row(
-        children: [
-          // Expanded: memaksa kolom total mengisi sisa ruang di sisi kiri.
-          Expanded(
-            // Column: menyusun label "Total" dan nominal harga secara vertikal.
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Text: label "Total".
-                const Text('Total', style: TextStyle(fontSize: 12, color: AppColors.textGrey)),
-                // Text: nominal total harga, dihitung otomatis dari isi keranjang.
-                Text(
-                  formatRupiah(grandTotal),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
+          // Row: menyusun label total (kiri) dan tombol checkout (kanan).
+          child: Row(
+            children: [
+              // Expanded: memaksa kolom total mengisi sisa ruang di sisi kiri.
+              Expanded(
+                // Column: menyusun label "Total" dan nominal harga secara vertikal.
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Text: label "Total".
+                    const Text(
+                      'Total',
+                      style: TextStyle(fontSize: 12, color: AppColors.textGrey),
+                    ),
+                    // Text: nominal total harga, dihitung otomatis oleh provider.
+                    Text(
+                      formatRupiah(grandTotal),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // GestureDetector: mendeteksi ketukan tombol checkout. Jika
+              // keranjang kosong (canCheckout false), onTap bernilai null.
+              GestureDetector(
+                // Navigator.push: membuka halaman sukses checkout.
+                onTap: canCheckout
+                    ? () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const OrderSuccessPage(),
+                          ),
+                        )
+                    : null,
+                // Container: tombol checkout, abu-abu saat dinonaktifkan.
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: canCheckout
+                        ? AppColors.primaryGreen
+                        : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  // Row: menyusun ikon dan teks tombol secara horizontal.
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Icon: ikon keranjang pada tombol checkout.
+                      Icon(Icons.shopping_cart_checkout,
+                          color: Colors.white, size: 16),
+                      SizedBox(width: 6), // jarak kecil
+                      // Text: label tombol checkout.
+                      Text(
+                        'Checkout Sekarang',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          // GestureDetector: mendeteksi ketukan tombol checkout. Jika
-          // onCheckout bernilai null (keranjang kosong), ketukan diabaikan.
-          GestureDetector(
-            onTap: onCheckout,
-            // Container: tombol checkout, warnanya abu-abu saat dinonaktifkan.
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: onCheckout != null ? AppColors.primaryGreen : Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(12),
               ),
-              // Row: menyusun ikon dan teks tombol secara horizontal.
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon: ikon keranjang pada tombol checkout.
-                  Icon(Icons.shopping_cart_checkout, color: Colors.white, size: 16),
-                  SizedBox(width: 6), // jarak kecil
-                  // Text: label tombol checkout.
-                  Text(
-                    'Checkout Sekarang',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

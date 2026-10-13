@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // dibutuhkan untuk FilteringTextInputFormatter
-import '../common/app_colors.dart';
-import '../common/format_rupiah.dart';
-import '../models/food_item.dart';
+import 'package:provider/provider.dart';
+import 'appcolors.dart';
+import 'cartprovider.dart';
+import 'fooditem.dart';
+import 'formatrupiah.dart';
 
 // Widget kartu satu item di dalam keranjang: gambar, nama, harga,
 // dan input jumlah pesanan yang hanya menerima angka serta terhubung
-// dengan stok menu (StatefulWidget karena punya TextEditingController).
+// dengan stok menu. Tetap StatefulWidget karena memiliki
+// TextEditingController beserta siklus hidupnya (initState, dispose).
 class CartItemCard extends StatefulWidget {
   const CartItemCard({
     super.key,
     required this.item,
     required this.quantity,
     required this.maxQuantity,
-    required this.onQuantityChanged,
   });
 
   final FoodItem item;
   final int quantity;
   final int maxQuantity;
-  final ValueChanged<int> onQuantityChanged;
 
   @override
   State<CartItemCard> createState() => _CartItemCardState();
@@ -39,7 +40,7 @@ class _CartItemCardState extends State<CartItemCard> {
   void didUpdateWidget(covariant CartItemCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Menyamakan teks pada TextField apabila jumlah berubah dari luar
-    // (misalnya setelah stok disesuaikan ulang).
+    // (misalnya setelah provider menyesuaikan jumlah).
     if (oldWidget.quantity != widget.quantity &&
         quantityController.text != '${widget.quantity}') {
       quantityController.text = '${widget.quantity}';
@@ -54,10 +55,13 @@ class _CartItemCardState extends State<CartItemCard> {
 
   // Memvalidasi teks yang diketik pengguna: hanya diproses jika berupa
   // angka valid dan minimal 1, lalu dibatasi (clamp) sampai stok maksimum.
+  // Perubahan dikirim ke CartProvider lewat context.read (tanpa berlangganan).
   void updateQuantity(String value) {
     final parsed = int.tryParse(value);
     if (parsed == null || parsed < 1) return;
-    widget.onQuantityChanged(parsed.clamp(1, widget.maxQuantity));
+    context
+        .read<CartProvider>()
+        .changeQuantity(widget.item, parsed.clamp(1, widget.maxQuantity));
   }
 
   @override
@@ -85,8 +89,7 @@ class _CartItemCardState extends State<CartItemCard> {
           // Stack: menumpuk badge kecil "Baru" di atas gambar produk.
           Stack(
             children: [
-              // ClipRRect + Image: menampilkan foto produk dari folder
-              // assets dengan sudut membulat.
+              // ClipRRect: memotong gambar agar sudutnya membulat.
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 // Image.asset: menampilkan gambar dari folder assets project.
@@ -162,9 +165,8 @@ class _CartItemCardState extends State<CartItemCard> {
           SizedBox(
             width: 48,
             // TextField: input jumlah produk yang dipesan.
-            // keyboardType TextInputType.number memunculkan keyboard angka,
-            // dan inputFormatters memastikan hanya digit (0-9) yang bisa
-            // diketik, sesuai materi Modul 3 tentang membatasi input TextField.
+            // keyboardType number memunculkan keyboard angka, dan
+            // inputFormatters memastikan hanya digit (0-9) yang bisa diketik.
             child: TextField(
               controller: quantityController,
               keyboardType: TextInputType.number,

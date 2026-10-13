@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
-import 'common/app_colors.dart';
-import 'common/format_rupiah.dart';
-import 'widgets/main_nav.dart';
+import 'package:provider/provider.dart';
+import 'appcolors.dart';
+import 'cartprovider.dart';
+import 'formatrupiah.dart';
+import 'mainnav.dart';
 
 // ======================================================================
 // HALAMAN 3: SUKSES CHECKOUT (ORDER SUCCESS PAGE)
 // Ditampilkan setelah pengguna menekan tombol Checkout Sekarang.
+// Total pembayaran dibaca langsung dari CartProvider.
 // ======================================================================
 class OrderSuccessPage extends StatelessWidget {
-  const OrderSuccessPage({required this.grandTotal, super.key});
-
-  final int grandTotal;
+  const OrderSuccessPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // context.watch: (konsep Provider) mengambil total belanja terbaru
+    // dari CartProvider tanpa perlu dikirim lewat parameter.
+    final grandTotal = context.watch<CartProvider>().grandTotal;
+
     // Scaffold: struktur dasar halaman sukses checkout.
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -44,7 +49,11 @@ class OrderSuccessPage extends StatelessWidget {
                 const Text(
                   'Pesanan kamu berhasil dibuat!',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 22, height: 1.2, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontSize: 22,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 26), // jarak vertikal
                 // Text: menampilkan total yang harus dibayar, diformat Rupiah.
